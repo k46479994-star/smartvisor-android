@@ -1,10 +1,12 @@
 package com.smartvisor.android
 
 import android.content.res.ColorStateList
+import android.graphics.Paint
 import android.graphics.Typeface
 import android.os.Bundle
 import android.view.Gravity
 import android.view.View
+import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.LinearLayout
@@ -16,6 +18,7 @@ import com.google.android.material.card.MaterialCardView
 
 class MainActivity : AppCompatActivity() {
     private lateinit var content: FrameLayout
+    private lateinit var navBar: LinearLayout
     private val prefs by lazy { getSharedPreferences("smartvisor_items", MODE_PRIVATE) }
     private var current = Screen.HOME
 
@@ -31,30 +34,26 @@ class MainActivity : AppCompatActivity() {
         addView(header(), LinearLayout.LayoutParams(-1, -2))
         content = FrameLayout(this@MainActivity)
         addView(content, LinearLayout.LayoutParams(-1, 0, 1f))
-        addView(bottomNav(), LinearLayout.LayoutParams(-1, -2))
+        navBar = bottomNav()
+        addView(navBar, LinearLayout.LayoutParams(-1, -2))
     }
 
     private fun header(): View = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
-        setPadding(dp(20), dp(20), dp(20), dp(12))
+        setPadding(dp(20), dp(18), dp(20), dp(12))
         setBackgroundColor(WHITE)
         addView(label("오프라인 개인 비서", 12f, PRIMARY, true))
         addView(label("스마트비서", 25f, TEXT, true))
     }
 
-    private fun bottomNav(): View = LinearLayout(this).apply {
+    private fun bottomNav(): LinearLayout = LinearLayout(this).apply {
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER
-        setPadding(dp(6), dp(8), dp(6), dp(16))
+        setPadding(dp(6), dp(8), dp(6), dp(14))
         setBackgroundColor(WHITE)
-        listOf(
-            Nav("⌂\n홈", Screen.HOME),
-            Nav("＋\n입력", Screen.INPUT),
-            Nav("▣\n일정", Screen.CALENDAR),
-            Nav("✓\n할 일", Screen.TASKS),
-            Nav("▤\n메모", Screen.NOTES)
-        ).forEach { nav ->
+        navItems().forEach { nav ->
             addView(MaterialButton(this@MainActivity).apply {
+                tag = nav.screen
                 text = nav.title
                 textSize = 12f
                 isAllCaps = false
@@ -62,8 +61,6 @@ class MainActivity : AppCompatActivity() {
                 minHeight = dp(58)
                 cornerRadius = dp(18)
                 setPadding(0, dp(4), 0, dp(4))
-                setTextColor(TEXT_MUTED)
-                backgroundTintList = ColorStateList.valueOf(WHITE)
                 setOnClickListener { show(nav.screen) }
             }, LinearLayout.LayoutParams(0, dp(62), 1f).apply {
                 marginStart = dp(2)
@@ -72,6 +69,14 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun navItems() = listOf(
+        Nav("⌂\n홈", Screen.HOME),
+        Nav("＋\n입력", Screen.INPUT),
+        Nav("▣\n일정", Screen.CALENDAR),
+        Nav("✓\n할 일", Screen.TASKS),
+        Nav("▤\n메모", Screen.NOTES)
+    )
+
     private fun show(screen: Screen) {
         current = screen
         content.removeAllViews()
@@ -79,19 +84,31 @@ class MainActivity : AppCompatActivity() {
             Screen.HOME -> home()
             Screen.INPUT -> inputScreen()
             Screen.CALENDAR -> listScreen("일정", ItemType.CALENDAR, "새 일정")
-            Screen.TASKS -> listScreen("할 일", ItemType.TASK, "새 할 일")
+            Screen.TASKS -> taskScreen()
             Screen.NOTES -> listScreen("메모", ItemType.MEMO, "새 메모")
         }
         content.addView(view, FrameLayout.LayoutParams(-1, -1))
+        updateNavSelection()
+    }
+
+    private fun updateNavSelection() {
+        if (!::navBar.isInitialized) return
+        for (i in 0 until navBar.childCount) {
+            val button = navBar.getChildAt(i) as MaterialButton
+            val selected = button.tag == current
+            button.setTextColor(if (selected) WHITE else TEXT_MUTED)
+            button.backgroundTintList = ColorStateList.valueOf(if (selected) PRIMARY else WHITE)
+        }
     }
 
     private fun home(): View = scrollColumn().apply {
         addView(label("좋은 하루예요 👋", 26f, TEXT, true))
         addView(label("필요한 내용을 바로 기록해 보세요.", 14f, TEXT_MUTED, false), top(4))
         addView(primaryCard(), top(18))
-        addView(summaryCard("오늘 일정", count(ItemType.CALENDAR), Screen.CALENDAR), top(12))
-        addView(summaryCard("오늘 할 일", count(ItemType.TASK), Screen.TASKS), top(12))
-        addView(summaryCard("최근 메모", count(ItemType.MEMO), Screen.NOTES), top(12))
+        addView(summaryCard("오늘 일정", count(ItemType.CALENDAR), "저장된 일정", Screen.CALENDAR), top(12))
+        addView(summaryCard("오늘 할 일", taskPendingCount(), "남은 할 일", Screen.TASKS), top(12))
+        addView(summaryCard("최근 메모", count(ItemType.MEMO), "저장된 메모", Screen.NOTES), top(12))
+        if (taskCount() > 0) addView(progressCard(), top(12))
     }
 
     private fun primaryCard(): View = MaterialCardView(this).apply {
@@ -114,7 +131,7 @@ class MainActivity : AppCompatActivity() {
         })
     }
 
-    private fun summaryCard(title: String, count: Int, screen: Screen): View = card().apply {
+    private fun summaryCard(title: String, count: Int, unit: String, screen: Screen): View = card().apply {
         isClickable = true
         setOnClickListener { show(screen) }
         addView(LinearLayout(this@MainActivity).apply {
@@ -124,9 +141,21 @@ class MainActivity : AppCompatActivity() {
             addView(LinearLayout(this@MainActivity).apply {
                 orientation = LinearLayout.VERTICAL
                 addView(label(title, 17f, TEXT, true))
-                addView(label(if (count == 0) "등록된 항목이 없습니다." else "저장된 항목 ${count}개", 14f, TEXT_MUTED, false), top(4))
+                addView(label(if (count == 0) "등록된 항목이 없습니다." else "$unit ${count}개", 14f, TEXT_MUTED, false), top(4))
             }, LinearLayout.LayoutParams(0, -2, 1f))
             addView(label("›", 28f, PRIMARY, true))
+        })
+    }
+
+    private fun progressCard(): View = card().apply {
+        val total = taskCount()
+        val complete = taskCompleteCount()
+        val percent = if (total == 0) 0 else complete * 100 / total
+        addView(LinearLayout(this@MainActivity).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(18), dp(16), dp(18), dp(16))
+            addView(label("할 일 완료율", 17f, TEXT, true))
+            addView(label("$percent% · $complete/$total 완료", 22f, PRIMARY, true), top(6))
         })
     }
 
@@ -152,13 +181,8 @@ class MainActivity : AppCompatActivity() {
                 val text = input.text.toString().trim()
                 if (text.isNotEmpty()) {
                     val type = SimpleClassifier.classify(text)
-                    save(type, text)
-                    input.setText("")
-                    show(when (type) {
-                        ItemType.CALENDAR -> Screen.CALENDAR
-                        ItemType.TASK -> Screen.TASKS
-                        ItemType.MEMO -> Screen.NOTES
-                    })
+                    if (type == ItemType.TASK) saveTask(text) else save(type, text)
+                    show(screenFor(type))
                 }
             }
         }, top(14))
@@ -174,70 +198,186 @@ class MainActivity : AppCompatActivity() {
             setOnClickListener { showAddDialog(type) }
         }, top(12))
         val values = items(type)
-        if (values.isEmpty()) {
-            addView(card().apply {
-                addView(label("아직 저장된 항목이 없습니다.", 15f, TEXT_MUTED, false).apply {
-                    setPadding(dp(18), dp(24), dp(18), dp(24))
-                    gravity = Gravity.CENTER
-                })
-            }, top(14))
-        } else {
-            values.forEach { item ->
-                addView(card().apply {
-                    addView(LinearLayout(this@MainActivity).apply {
-                        orientation = LinearLayout.HORIZONTAL
-                        gravity = Gravity.CENTER_VERTICAL
-                        setPadding(dp(18), dp(14), dp(10), dp(14))
-                        addView(label(item, 16f, TEXT, true), LinearLayout.LayoutParams(0, -2, 1f))
-                        addView(MaterialButton(this@MainActivity).apply {
-                            text = "삭제"
-                            isAllCaps = false
-                            setTextColor(0xFFB3261E.toInt())
-                            backgroundTintList = ColorStateList.valueOf(WHITE)
-                            setOnClickListener {
-                                remove(type, item)
-                                show(current)
-                            }
-                        })
-                    })
-                }, top(10))
-            }
+        if (values.isEmpty()) addView(emptyCard(), top(14)) else values.forEach { item ->
+            addView(itemCard(type, item), top(10))
         }
     }
 
-    private fun showAddDialog(type: ItemType) {
-        val input = EditText(this).apply {
-            hint = "내용을 입력하세요"
-            setPadding(dp(16), dp(12), dp(16), dp(12))
+    private fun taskScreen(): View = scrollColumn().apply {
+        addView(label("할 일", 28f, TEXT, true))
+        if (taskCount() > 0) addView(label("${taskCompleteCount()}개 완료 · ${taskPendingCount()}개 남음", 15f, PRIMARY, true), top(5))
+        addView(MaterialButton(this@MainActivity).apply {
+            text = "+ 새 할 일"
+            isAllCaps = false
+            cornerRadius = dp(18)
+            backgroundTintList = ColorStateList.valueOf(PRIMARY)
+            setOnClickListener { showAddDialog(ItemType.TASK) }
+        }, top(12))
+        val tasks = taskItems()
+        if (tasks.isEmpty()) addView(emptyCard(), top(14)) else tasks.forEach { task ->
+            addView(taskCard(task), top(10))
         }
+    }
+
+    private fun emptyCard(): View = card().apply {
+        addView(label("아직 저장된 항목이 없습니다.", 15f, TEXT_MUTED, false).apply {
+            setPadding(dp(18), dp(24), dp(18), dp(24))
+            gravity = Gravity.CENTER
+        })
+    }
+
+    private fun itemCard(type: ItemType, item: String): View = card().apply {
+        addView(LinearLayout(this@MainActivity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(18), dp(12), dp(8), dp(12))
+            addView(label(item, 16f, TEXT, true), LinearLayout.LayoutParams(0, -2, 1f))
+            addView(actionButton("수정", PRIMARY) { showEditDialog(type, item) })
+            addView(actionButton("삭제", DANGER) { remove(type, item); show(current) })
+        })
+    }
+
+    private fun taskCard(task: TaskItem): View = card().apply {
+        addView(LinearLayout(this@MainActivity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(12), dp(10), dp(8), dp(10))
+            addView(CheckBox(this@MainActivity).apply {
+                isChecked = task.done
+                buttonTintList = ColorStateList.valueOf(PRIMARY)
+                setOnCheckedChangeListener { _, checked ->
+                    updateTask(task, task.copy(done = checked))
+                    show(Screen.TASKS)
+                }
+            })
+            addView(label(task.text, 16f, if (task.done) TEXT_MUTED else TEXT, true).apply {
+                if (task.done) paintFlags = paintFlags or Paint.STRIKE_THRU_TEXT_FLAG
+            }, LinearLayout.LayoutParams(0, -2, 1f))
+            addView(actionButton("수정", PRIMARY) { showTaskEditDialog(task) })
+            addView(actionButton("삭제", DANGER) { removeTask(task); show(Screen.TASKS) })
+        })
+    }
+
+    private fun actionButton(title: String, color: Int, action: () -> Unit) = MaterialButton(this).apply {
+        text = title
+        textSize = 12f
+        isAllCaps = false
+        minWidth = 0
+        setTextColor(color)
+        backgroundTintList = ColorStateList.valueOf(WHITE)
+        setOnClickListener { action() }
+    }
+
+    private fun showAddDialog(type: ItemType) {
+        val input = dialogInput()
         AlertDialog.Builder(this)
             .setTitle("새 항목")
             .setView(input)
             .setNegativeButton("취소", null)
             .setPositiveButton("저장") { _, _ ->
                 val text = input.text.toString().trim()
-                if (text.isNotEmpty()) save(type, text)
+                if (text.isNotEmpty()) {
+                    if (type == ItemType.TASK) saveTask(text) else save(type, text)
+                }
                 show(current)
-            }
-            .show()
+            }.show()
+    }
+
+    private fun showEditDialog(type: ItemType, oldText: String) {
+        val input = dialogInput(oldText)
+        AlertDialog.Builder(this)
+            .setTitle("항목 수정")
+            .setView(input)
+            .setNegativeButton("취소", null)
+            .setPositiveButton("저장") { _, _ ->
+                val newText = input.text.toString().trim()
+                if (newText.isNotEmpty()) replace(type, oldText, newText)
+                show(current)
+            }.show()
+    }
+
+    private fun showTaskEditDialog(task: TaskItem) {
+        val input = dialogInput(task.text)
+        AlertDialog.Builder(this)
+            .setTitle("할 일 수정")
+            .setView(input)
+            .setNegativeButton("취소", null)
+            .setPositiveButton("저장") { _, _ ->
+                val newText = input.text.toString().trim()
+                if (newText.isNotEmpty()) updateTask(task, task.copy(text = newText))
+                show(Screen.TASKS)
+            }.show()
+    }
+
+    private fun dialogInput(text: String = "") = EditText(this).apply {
+        hint = "내용을 입력하세요"
+        setText(text)
+        setSelection(this.text.length)
+        setPadding(dp(16), dp(12), dp(16), dp(12))
     }
 
     private fun save(type: ItemType, text: String) {
+        val values = items(type).toMutableList().apply { add(0, text) }
+        put(type.name, values)
+    }
+
+    private fun replace(type: ItemType, oldText: String, newText: String) {
         val values = items(type).toMutableList()
-        values.add(0, text)
-        prefs.edit().putString(type.name, values.joinToString("\u001F")).apply()
+        val index = values.indexOf(oldText)
+        if (index >= 0) values[index] = newText
+        put(type.name, values)
     }
 
     private fun remove(type: ItemType, text: String) {
-        val values = items(type).toMutableList()
-        values.remove(text)
-        prefs.edit().putString(type.name, values.joinToString("\u001F")).apply()
+        val values = items(type).toMutableList().apply { remove(text) }
+        put(type.name, values)
+    }
+
+    private fun saveTask(text: String) {
+        val values = taskItems().toMutableList().apply { add(0, TaskItem(text, false)) }
+        putTasks(values)
+    }
+
+    private fun updateTask(old: TaskItem, new: TaskItem) {
+        val values = taskItems().toMutableList()
+        val index = values.indexOf(old)
+        if (index >= 0) values[index] = new
+        putTasks(values)
+    }
+
+    private fun removeTask(task: TaskItem) {
+        val values = taskItems().toMutableList().apply { remove(task) }
+        putTasks(values)
+    }
+
+    private fun put(key: String, values: List<String>) {
+        prefs.edit().putString(key, values.joinToString(SEPARATOR)).apply()
+    }
+
+    private fun putTasks(values: List<TaskItem>) {
+        put(ItemType.TASK.name, values.map { "${if (it.done) "1" else "0"}|${it.text}" })
     }
 
     private fun items(type: ItemType): List<String> = prefs.getString(type.name, "")
-        .orEmpty().split("\u001F").filter { it.isNotBlank() }
+        .orEmpty().split(SEPARATOR).filter { it.isNotBlank() }
 
-    private fun count(type: ItemType): Int = items(type).size
+    private fun taskItems(): List<TaskItem> = items(ItemType.TASK).map { raw ->
+        when {
+            raw.startsWith("1|") -> TaskItem(raw.drop(2), true)
+            raw.startsWith("0|") -> TaskItem(raw.drop(2), false)
+            else -> TaskItem(raw, false)
+        }
+    }
+
+    private fun count(type: ItemType) = items(type).size
+    private fun taskCount() = taskItems().size
+    private fun taskCompleteCount() = taskItems().count { it.done }
+    private fun taskPendingCount() = taskItems().count { !it.done }
+    private fun screenFor(type: ItemType) = when (type) {
+        ItemType.CALENDAR -> Screen.CALENDAR
+        ItemType.TASK -> Screen.TASKS
+        ItemType.MEMO -> Screen.NOTES
+    }
 
     private fun scrollColumn(): LinearLayout = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
@@ -261,14 +401,17 @@ class MainActivity : AppCompatActivity() {
     private fun top(value: Int) = LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(value) }
     private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
 
+    private data class TaskItem(val text: String, val done: Boolean)
     private data class Nav(val title: String, val screen: Screen)
     private enum class Screen { HOME, INPUT, CALENDAR, TASKS, NOTES }
 
     companion object {
+        private const val SEPARATOR = "\u001F"
         private const val BG = 0xFFF7F5FC.toInt()
         private const val WHITE = 0xFFFFFFFF.toInt()
         private const val PRIMARY = 0xFF6750A4.toInt()
         private const val TEXT = 0xFF211B2E.toInt()
         private const val TEXT_MUTED = 0xFF6F687A.toInt()
+        private const val DANGER = 0xFFB3261E.toInt()
     }
 }
