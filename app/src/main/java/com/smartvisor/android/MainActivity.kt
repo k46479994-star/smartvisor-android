@@ -8,7 +8,6 @@ import android.view.View
 import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.LinearLayout
-import android.widget.ScrollView
 import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -29,7 +28,6 @@ class MainActivity : AppCompatActivity() {
     private fun root(): View = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
         setBackgroundColor(BG)
-
         addView(header(), LinearLayout.LayoutParams(-1, -2))
         content = FrameLayout(this@MainActivity)
         addView(content, LinearLayout.LayoutParams(-1, 0, 1f))
@@ -175,9 +173,8 @@ class MainActivity : AppCompatActivity() {
             backgroundTintList = ColorStateList.valueOf(PRIMARY)
             setOnClickListener { showAddDialog(type) }
         }, top(12))
-
-        val items = items(type)
-        if (items.isEmpty()) {
+        val values = items(type)
+        if (values.isEmpty()) {
             addView(card().apply {
                 addView(label("아직 저장된 항목이 없습니다.", 15f, TEXT_MUTED, false).apply {
                     setPadding(dp(18), dp(24), dp(18), dp(24))
@@ -185,7 +182,7 @@ class MainActivity : AppCompatActivity() {
                 })
             }, top(14))
         } else {
-            items.forEach { item ->
+            values.forEach { item ->
                 addView(card().apply {
                     addView(LinearLayout(this@MainActivity).apply {
                         orientation = LinearLayout.HORIZONTAL
@@ -245,12 +242,7 @@ class MainActivity : AppCompatActivity() {
     private fun scrollColumn(): LinearLayout = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
         setPadding(dp(20), dp(18), dp(20), dp(28))
-    }.let { column ->
-        ScrollView(this).apply {
-            setBackgroundColor(BG)
-            addView(column, ScrollView.LayoutParams(-1, -2))
-        }
-        column
+        setBackgroundColor(BG)
     }
 
     private fun card(): MaterialCardView = MaterialCardView(this).apply {
