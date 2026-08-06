@@ -11,13 +11,26 @@ android {
         applicationId = "com.smartvisor.android"
         minSdk = 26
         targetSdk = 35
-        versionCode = 3
-        versionName = "1.1.1"
+        versionCode = 4
+        versionName = "1.1.2"
+    }
+
+    signingConfigs {
+        create("update") {
+            storeFile = file("signing/smartvisor-update.jks")
+            storePassword = "smartvisor-update-2026"
+            keyAlias = "smartvisor"
+            keyPassword = "smartvisor-update-2026"
+        }
     }
 
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("update")
+        }
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("update")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
